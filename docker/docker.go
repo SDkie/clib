@@ -132,7 +132,13 @@ func (d Docker) GetContainerData(containerId string) (*container.ContainerData, 
 	// TODO containerData.Proxy
 	containerData.Privileged = containerJson.HostConfig.Privileged
 	// TODO containerData.Network
-	// TODO containerData.Process
+	if containerJson.HostConfig.PidMode.IsPrivate() {
+		containerData.Process = container.PID_PRIVATE
+	} else if containerJson.HostConfig.PidMode.IsHost() {
+		containerData.Process = container.PID_HOST
+	} else if containerJson.HostConfig.PidMode.IsContainer() {
+		containerData.Process = container.PID_CONTAINER
+	}
 	containerData.VolumeMap = containerJson.Config.Volumes
 	// TODO	containerData.VirtualEthDevice
 	containerData.CreatedTime, err = time.Parse(time.RFC3339, containerJson.Created)

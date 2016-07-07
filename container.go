@@ -9,6 +9,12 @@ type NetworkType int
 
 type ProcessSpaceType int
 
+const (
+	PID_PRIVATE = iota
+	PID_HOST
+	PID_CONTAINER
+)
+
 type ContainerData struct {
 	ContainerType    string //docket, rkt etc
 	Name             string
