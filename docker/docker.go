@@ -1,7 +1,10 @@
 package docker
 
 import (
+	"crypto/sha256"
 	"errors"
+	"io"
+	"strconv"
 	"time"
 
 	"golang.org/x/net/context"
@@ -128,7 +131,22 @@ func (d Docker) GetContainerData(containerId string) (*container.ContainerData, 
 	containerData.Name = containerJson.Name
 	containerData.ContainerId = containerJson.ID
 	containerData.ImageId = containerJson.Image
-	// TODO containerData.ListenPortMap
+
+	// ListenPortMap
+	for key, value := range containerJson.NetworkSettings.Ports {
+		fromPort := key.Int()
+		var toPort int64
+
+		if len(value) >= 1 {
+			toPort, err = strconv.ParseInt(value[0].HostPort, 10, 64)
+			if err != nil {
+				logger.Err(err)
+			}
+		}
+
+		containerData.ListenPortMap[fromPort] = int(toPort)
+	}
+
 	// TODO containerData.Proxy
 	containerData.Privileged = containerJson.HostConfig.Privileged
 
@@ -170,8 +188,29 @@ func (d Docker) GetContainerData(containerId string) (*container.ContainerData, 
 }
 
 func (d Docker) GetHashForPath(path string, containerId string) ([]byte, error) {
-	// TODO : Func Not Defined
-	return []byte{}, ErrFuncNotDefined
+	cli, err := d.getClient()
+	if err != nil {
+		return nil, err
+	}
+
+	reader, _, err := cli.CopyFromContainer(context.TODO(), containerId, path)
+	if err != nil {
+		logger.Err(err)
+		return nil, err
+	}
+	defer reader.Close()
+
+	hasher := sha256.New()
+	_, err = io.Copy(hasher, reader)
+	if err != nil {
+		logger.Err(err)
+		return nil, err
+	}
+
+	hash := hasher.Sum([]byte{})
+	logger.Debug(hash)
+
+	return hash, nil
 }
 
 func (d Docker) GetUsernameForUid(containerId string, uid int) (string, error) {
@@ -197,7 +236,6 @@ func (d Docker) GetImageData(id string) (*container.ImageData, error) {
 		if image.ID == id {
 			imageData.Id = image.ID
 
-			// Check this - VIMP
 			if len(image.RepoTags) > 2 {
 				imageData.Name = image.RepoTags[0]
 				imageData.Tag = image.RepoTags[1]
