@@ -7,6 +7,15 @@ import (
 // Network type, Bridge, host etc.
 type NetworkType int
 
+const (
+	NETWORK_TYPE_BRIDGE = iota
+	NETWORK_TYPE_HOST
+	NETWORK_TYPE_CONTAINER
+	NETWORK_TYPE_NONE
+	NETWORK_TYPE_DEFAULT
+	NETWORK_TYPE_USER_DEFINED
+)
+
 type ProcessSpaceType int
 
 const (

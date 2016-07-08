@@ -131,7 +131,23 @@ func (d Docker) GetContainerData(containerId string) (*container.ContainerData, 
 	// TODO containerData.ListenPortMap
 	// TODO containerData.Proxy
 	containerData.Privileged = containerJson.HostConfig.Privileged
-	// TODO containerData.Network
+
+	// NetworkType
+	if containerJson.HostConfig.NetworkMode.IsBridge() {
+		containerData.Network = container.NETWORK_TYPE_BRIDGE
+	} else if containerJson.HostConfig.NetworkMode.IsHost() {
+		containerData.Network = container.NETWORK_TYPE_HOST
+	} else if containerJson.HostConfig.NetworkMode.IsContainer() {
+		containerData.Network = container.NETWORK_TYPE_CONTAINER
+	} else if containerJson.HostConfig.NetworkMode.IsNone() {
+		containerData.Network = container.NETWORK_TYPE_NONE
+	} else if containerJson.HostConfig.NetworkMode.IsDefault() {
+		containerData.Network = container.NETWORK_TYPE_DEFAULT
+	} else if containerJson.HostConfig.NetworkMode.IsUserDefined() {
+		containerData.Network = container.NETWORK_TYPE_USER_DEFINED
+	}
+
+	// ProcessSpaceType
 	if containerJson.HostConfig.PidMode.IsPrivate() {
 		containerData.Process = container.PID_PRIVATE
 	} else if containerJson.HostConfig.PidMode.IsHost() {
@@ -139,6 +155,7 @@ func (d Docker) GetContainerData(containerId string) (*container.ContainerData, 
 	} else if containerJson.HostConfig.PidMode.IsContainer() {
 		containerData.Process = container.PID_CONTAINER
 	}
+
 	containerData.VolumeMap = containerJson.Config.Volumes
 	// TODO	containerData.VirtualEthDevice
 	containerData.CreatedTime, err = time.Parse(time.RFC3339, containerJson.Created)
@@ -179,10 +196,15 @@ func (d Docker) GetImageData(id string) (*container.ImageData, error) {
 	for _, image := range images {
 		if image.ID == id {
 			imageData.Id = image.ID
+
+			// Check this - VIMP
 			if len(image.RepoTags) > 2 {
 				imageData.Name = image.RepoTags[0]
 				imageData.Tag = image.RepoTags[1]
+			} else if len(image.RepoTags) > 1 {
+				imageData.Name = image.RepoTags[0]
 			}
+
 			//	TODO imageData.Mtime
 			imageData.Size = image.Size
 			imageData.BuildTime = time.Unix(image.Created, 0)
