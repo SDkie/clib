@@ -47,7 +47,6 @@ func (d Docker) getClient() (*client.Client, error) {
 }
 
 func (d Docker) IsDockerInstalled() bool {
-	// TODO : Check this
 	_, err := d.getClient()
 	if err != nil {
 		logger.Err(err)
@@ -60,7 +59,7 @@ func (d Docker) IsDockerInstalled() bool {
 func (d Docker) GetContainerForProcess(pid int) (containerId string, err error) {
 	cli, err := d.getClient()
 	if err != nil {
-		return "", err
+		return
 	}
 
 	containers, err := cli.ContainerList(context.TODO(), types.ContainerListOptions{})
