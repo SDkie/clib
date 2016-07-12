@@ -29,6 +29,33 @@ func TestIsDockerInstalled(t *testing.T) {
 	}
 }
 
+func TestGetContainerForProcess(t *testing.T) {
+	var c mycontainer.Container
+	c = Docker{}
+
+	err := cli.ContainerStart(context.TODO(), containerId, types.ContainerStartOptions{})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	containerJson, err := cli.ContainerInspect(context.TODO(), containerId)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	cId, err := c.GetContainerForProcess(containerJson.State.Pid)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if cId != containerId {
+		t.Error("Invalid Container Id")
+	}
+}
+
 func TestMain(m *testing.M) {
 	var err error
 	cli, err = client.NewClient(client.DefaultDockerHost, "", nil, nil)
@@ -65,6 +92,7 @@ func TestMain(m *testing.M) {
 
 	config := container.Config{
 		Image: "ubuntu:latest",
+		Cmd:   []string{"/bin/bash"},
 	}
 
 	resp, err := cli.ContainerCreate(context.TODO(), &config, &container.HostConfig{},
