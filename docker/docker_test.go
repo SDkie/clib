@@ -11,14 +11,18 @@ import (
 
 	"github.com/docker/engine-api/client"
 	"github.com/docker/engine-api/types"
-	"github.com/kdsukhani/container"
+	"github.com/docker/engine-api/types/container"
+	"github.com/docker/engine-api/types/network"
+
+	mycontainer "github.com/kdsukhani/container"
 )
 
 var cli *client.Client
 var imageId string
+var containerId string
 
 func TestIsDockerInstalled(t *testing.T) {
-	var c container.Container
+	var c mycontainer.Container
 	c = Docker{}
 	if !c.IsDockerInstalled() {
 		t.Error("Docker Not Installed")
@@ -45,10 +49,11 @@ func TestMain(m *testing.M) {
 
 	for err == nil {
 		err = responseDecoder.Decode(&data)
+		fmt.Println(data)
+
 		if strings.Contains(data.Status, "Digest") {
 			break
 		}
-		fmt.Println(data)
 	}
 
 	if !strings.Contains(data.Status, "Digest") {
@@ -57,6 +62,20 @@ func TestMain(m *testing.M) {
 		imageId = data.Status[strings.LastIndex(data.Status, ":")+1:]
 		fmt.Println(imageId)
 	}
+
+	config := container.Config{
+		Image: "ubuntu:latest",
+	}
+
+	resp, err := cli.ContainerCreate(context.TODO(), &config, &container.HostConfig{},
+		&network.NetworkingConfig{}, "")
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	fmt.Println(resp)
+	containerId = resp.ID
 
 	os.Exit(m.Run())
 }
