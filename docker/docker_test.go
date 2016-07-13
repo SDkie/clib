@@ -2,19 +2,20 @@ package docker
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
 
 	"golang.org/x/net/context"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/engine-api/client"
 	"github.com/docker/engine-api/types"
 	"github.com/docker/engine-api/types/container"
 	"github.com/docker/engine-api/types/network"
 
 	mycontainer "github.com/kdsukhani/container"
+	"github.com/kdsukhani/container/logger"
 )
 
 var cli *client.Client
@@ -35,8 +36,8 @@ func TestGetContainerForProcess(t *testing.T) {
 
 	err := cli.ContainerStart(context.TODO(), containerId, types.ContainerStartOptions{})
 	if err != nil {
-		t.Error(err)
-		return
+		logger.Err(err)
+		os.Exit(1)
 	}
 
 	containerJson, err := cli.ContainerInspect(context.TODO(), containerId)
@@ -56,8 +57,31 @@ func TestGetContainerForProcess(t *testing.T) {
 	}
 }
 
+func TestGetUsernameForUid(t *testing.T) {
+	var c mycontainer.Container
+	c = Docker{}
+
+	err := cli.ContainerStart(context.TODO(), containerId, types.ContainerStartOptions{})
+	if err != nil {
+		logger.Err(err)
+		os.Exit(1)
+	}
+
+	username, err := c.GetUsernameForUid(containerId, 0)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if username != "root" {
+		t.Error("Invalid User Name")
+	}
+}
+
 func TestMain(m *testing.M) {
 	var err error
+
+	logger.Init(logrus.ErrorLevel)
 	cli, err = client.NewClient(client.DefaultDockerHost, "", nil, nil)
 	if err != nil {
 		os.Exit(1)
@@ -65,7 +89,7 @@ func TestMain(m *testing.M) {
 
 	responseReader, err := cli.ImageCreate(context.TODO(), "ubuntu", types.ImageCreateOptions{})
 	if err != nil {
-		fmt.Println(err)
+		logger.Err(err)
 		os.Exit(1)
 	}
 
@@ -76,7 +100,7 @@ func TestMain(m *testing.M) {
 
 	for err == nil {
 		err = responseDecoder.Decode(&data)
-		fmt.Println(data)
+		logger.Debug(data)
 
 		if strings.Contains(data.Status, "Digest") {
 			break
@@ -87,7 +111,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	} else {
 		imageId = data.Status[strings.LastIndex(data.Status, ":")+1:]
-		fmt.Println(imageId)
+		logger.Debug(imageId)
 	}
 
 	config := container.Config{
@@ -98,11 +122,10 @@ func TestMain(m *testing.M) {
 	resp, err := cli.ContainerCreate(context.TODO(), &config, &container.HostConfig{},
 		&network.NetworkingConfig{}, "")
 	if err != nil {
-		fmt.Println(err)
+		logger.Err(err)
 		os.Exit(1)
 	}
 
-	fmt.Println(resp)
 	containerId = resp.ID
 
 	os.Exit(m.Run())

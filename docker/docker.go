@@ -347,7 +347,7 @@ func getContainerFile(srcContainer string, srcPath string, cli *client.Client) (
 	// goes into deciding how and whether the source archive needs to be
 	// altered for the correct copy behavior.
 	fileDir := ".tmp" + string(os.PathSeparator) + uuid.NewV4().String()
-	err = os.MkdirAll(fileDir, 0664)
+	err = os.MkdirAll(fileDir, 0777)
 	if err != nil {
 		logger.Err(err)
 		return "", "", err
