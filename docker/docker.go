@@ -4,15 +4,18 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
+	"os"
 	"strconv"
 	"time"
 
 	"golang.org/x/net/context"
 
+	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/engine-api/client"
 	"github.com/docker/engine-api/types"
 	"github.com/kdsukhani/container"
 	"github.com/kdsukhani/container/logger"
+	"github.com/satori/go.uuid"
 )
 
 const (
@@ -31,6 +34,8 @@ var (
 	ErrOnContainerInspect = errors.New("Error on Container Inspect")
 
 	ErrFuncNotDefined = errors.New("Func Not Defined")
+
+	ErrGivenDir = errors.New("Given Path is Dir")
 )
 
 type Docker struct {
@@ -192,21 +197,40 @@ func (d Docker) GetHashForPath(path string, containerId string) ([]byte, error) 
 		return nil, err
 	}
 
-	reader, _, err := cli.CopyFromContainer(context.TODO(), containerId, path)
+	stat, err := cli.ContainerStatPath(context.Background(), containerId, path)
 	if err != nil {
 		logger.Err(err)
 		return nil, err
 	}
-	defer reader.Close()
+
+	if !stat.Mode.IsDir() {
+		logger.Errf("%s - %s", ErrGivenDir.Error(), path)
+		return nil, ErrGivenDir
+	}
+
+	fileDir, fileName, err := getContainerFile(containerId, path, cli)
+	if err != nil {
+		logger.Err(err)
+		return nil, err
+	}
+	filePath := fileDir + string(os.PathSeparator) + fileName
+	defer os.Remove(fileDir)
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		logger.Err(err)
+		return nil, err
+	}
+	defer file.Close()
 
 	hasher := sha256.New()
-	_, err = io.Copy(hasher, reader)
+	_, err = io.Copy(hasher, file)
 	if err != nil {
 		logger.Err(err)
 		return nil, err
 	}
 
-	hash := hasher.Sum([]byte{})
+	hash := hasher.Sum(nil)
 	logger.Debug(hash)
 
 	return hash, nil
@@ -250,4 +274,44 @@ func (d Docker) GetImageData(id string) (*container.ImageData, error) {
 	}
 
 	return nil, ErrImageNotFound
+}
+
+func getContainerFile(srcContainer string, srcPath string, cli *client.Client) (filePath string, fileName string, err error) {
+	content, stat, err := cli.CopyFromContainer(context.Background(), srcContainer, srcPath)
+	if err != nil {
+		logger.Err(err)
+		return "", "", err
+	}
+
+	// Prepare source copy info.
+	srcInfo := archive.CopyInfo{
+		Path:       srcPath,
+		Exists:     true,
+		IsDir:      stat.Mode.IsDir(),
+		RebaseName: "",
+	}
+
+	preArchive := content
+	if len(srcInfo.RebaseName) != 0 {
+		_, srcBase := archive.SplitPathDirEntry(srcInfo.Path)
+		preArchive = archive.RebaseArchiveEntries(content, srcBase, srcInfo.RebaseName)
+	}
+
+	// See comments in the implementation of `archive.CopyTo` for exactly what
+	// goes into deciding how and whether the source archive needs to be
+	// altered for the correct copy behavior.
+	fileDir := ".tmp" + string(os.PathSeparator) + uuid.NewV4().String()
+	err = os.MkdirAll(fileDir, 0664)
+	if err != nil {
+		logger.Err(err)
+		return "", "", err
+	}
+
+	err = archive.CopyTo(preArchive, srcInfo, fileDir)
+	if err != nil {
+		logger.Err(err)
+		return
+	}
+
+	return fileDir, stat.Name, nil
 }
