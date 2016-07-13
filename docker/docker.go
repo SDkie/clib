@@ -3,9 +3,13 @@ package docker
 import (
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/net/context"
@@ -237,8 +241,50 @@ func (d Docker) GetHashForPath(path string, containerId string) ([]byte, error) 
 }
 
 func (d Docker) GetUsernameForUid(containerId string, uid int) (string, error) {
-	// TODO : Func Not Defined
-	return "", ErrFuncNotDefined
+	cli, err := d.getClient()
+	if err != nil {
+		return "", err
+	}
+
+	fileDir, fileName, err := getContainerFile(containerId, "/etc/passwd", cli)
+	if err != nil {
+		logger.Err(err)
+		return "", err
+	}
+	filePath := fileDir + string(os.PathSeparator) + fileName
+	defer os.Remove(fileDir)
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		logger.Err(err)
+		return "", err
+	}
+	defer file.Close()
+
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		logger.Err(err)
+		return "", err
+	}
+
+	regx := fmt.Sprintf("\n.*:.*:%d:", uid)
+	logger.Debug(regx)
+
+	re := regexp.MustCompile(regx)
+	strs := re.FindAllString("\n"+string(content), 1)
+	if len(strs) == 0 {
+		err = fmt.Errorf("UID %d not found", uid)
+		logger.Err(err)
+		return "", err
+	} else if len(strs) > 1 {
+		err = fmt.Errorf("Invalid Request")
+		logger.Err(err)
+		return "", err
+	}
+
+	index := strings.Index(strs[0], ":")
+	username := strs[0][1:index]
+	return username, nil
 }
 
 func (d Docker) GetImageData(id string) (*container.ImageData, error) {
