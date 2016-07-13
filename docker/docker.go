@@ -1,12 +1,14 @@
 package docker
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -66,19 +68,20 @@ func (d Docker) IsDockerInstalled() bool {
 }
 
 func (d Docker) GetContainerForProcess(pid int) (containerId string, err error) {
+	ctx := context.Background()
 	cli, err := d.getClient()
 	if err != nil {
 		return
 	}
 
-	containers, err := cli.ContainerList(context.TODO(), types.ContainerListOptions{})
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
 		logger.Err(err)
 		return "", ErrGettingContainerList
 	}
 
 	for _, container := range containers {
-		containerJson, err := cli.ContainerInspect(context.TODO(), container.ID)
+		containerJson, err := cli.ContainerInspect(ctx, container.ID)
 		if err != nil {
 			logger.Err(err)
 			return "", ErrOnContainerInspect
@@ -94,12 +97,13 @@ func (d Docker) GetContainerForProcess(pid int) (containerId string, err error) 
 }
 
 func (d Docker) GetContainerForListenPort(port int) (containerId string, err error) {
+	ctx := context.Background()
 	cli, err := d.getClient()
 	if err != nil {
 		return "", err
 	}
 
-	containers, err := cli.ContainerList(context.TODO(), types.ContainerListOptions{})
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
 		logger.Err(err)
 		return "", ErrGettingContainerList
@@ -118,17 +122,47 @@ func (d Docker) GetContainerForListenPort(port int) (containerId string, err err
 }
 
 func (d Docker) GetContainerForInterface(virtualEthDevice string) (string, error) {
-	// TODO : Not Defined
-	return "", ErrFuncNotDefined
+	ctx := context.Background()
+	cli, err := d.getClient()
+	if err != nil {
+		return "", err
+	}
+
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{})
+	if err != nil {
+		logger.Err(err)
+		return "", ErrGettingContainerList
+	}
+
+	for _, container := range containers {
+
+		containerJson, err := cli.ContainerInspect(ctx, container.ID)
+		if err != nil {
+			logger.Err(err)
+			return "", err
+		}
+		veth, err := getVethNameFromDockerPid(containerJson.State.Pid, containerJson.ID)
+		if err != nil {
+			logger.Err(err)
+			return "", err
+		}
+
+		if veth == virtualEthDevice {
+			return containerJson.ID, nil
+		}
+
+	}
+	return "", errors.New("Not Found")
 }
 
 func (d Docker) GetContainerData(containerId string) (*container.ContainerData, error) {
+	ctx := context.Background()
 	cli, err := d.getClient()
 	if err != nil {
 		return nil, err
 	}
 
-	containerJson, err := cli.ContainerInspect(context.TODO(), containerId)
+	containerJson, err := cli.ContainerInspect(ctx, containerId)
 	if err != nil {
 		logger.Err(err)
 		return nil, ErrOnContainerInspect
@@ -235,7 +269,6 @@ func (d Docker) GetHashForPath(path string, containerId string) ([]byte, error) 
 	}
 
 	hash := hasher.Sum(nil)
-	logger.Debug(hash)
 
 	return hash, nil
 }
@@ -268,7 +301,6 @@ func (d Docker) GetUsernameForUid(containerId string, uid int) (string, error) {
 	}
 
 	regx := fmt.Sprintf("\n.*:.*:%d:", uid)
-	logger.Debug(regx)
 
 	re := regexp.MustCompile(regx)
 	strs := re.FindAllString("\n"+string(content), 1)
@@ -288,12 +320,13 @@ func (d Docker) GetUsernameForUid(containerId string, uid int) (string, error) {
 }
 
 func (d Docker) GetImageData(id string) (*container.ImageData, error) {
+	ctx := context.Background()
 	cli, err := d.getClient()
 	if err != nil {
 		return nil, err
 	}
 
-	images, err := cli.ImageList(context.TODO(), types.ImageListOptions{})
+	images, err := cli.ImageList(ctx, types.ImageListOptions{})
 	if err != nil {
 		logger.Err(err)
 		return nil, ErrGettingImageList
@@ -320,6 +353,70 @@ func (d Docker) GetImageData(id string) (*container.ImageData, error) {
 	}
 
 	return nil, ErrImageNotFound
+}
+
+func getVethNameFromDockerPid(pid int, containerId string) (string, error) {
+	err := os.Mkdir("/var/run/netns", 0777)
+	if err != nil && !os.IsExist(err) {
+		logger.Err(err)
+		return "", err
+	}
+
+	path, err := exec.LookPath("ln")
+	if err != nil {
+		logger.Err(err)
+		return "", err
+	}
+
+	cmd := exec.Command(path, "-sf", fmt.Sprintf("/proc/%d/ns/net", pid), fmt.Sprintf("/var/run/netns/%s", containerId))
+	err = cmd.Run()
+	if err != nil {
+		logger.Err(err)
+		return "", err
+	}
+
+	path, err = exec.LookPath("ip")
+	if err != nil {
+		logger.Err(err)
+		return "", err
+	}
+
+	cmd = exec.Command(path, "netns", "exec", containerId, "ip", "link", "show", "eth0")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err = cmd.Run()
+	if err != nil {
+		logger.Err(err)
+		return "", err
+	}
+	strs := strings.Split(out.String(), ":")
+	indexString := strings.TrimSpace(strs[0])
+	if indexString == "" {
+		err = errors.New("eth0 Not Found")
+		logger.Err(err)
+		return "", err
+	}
+
+	index, err := strconv.ParseInt(indexString, 10, 64)
+	if err != nil {
+		logger.Err(err)
+		return "", err
+	}
+
+	cmd = exec.Command(path, "link", "show")
+	out.Reset()
+	cmd.Stdout = &out
+	err = cmd.Run()
+	if err != nil {
+		logger.Err(err)
+		return "", err
+	}
+
+	re := regexp.MustCompile(fmt.Sprintf("%d: .*:", index+1))
+	strs = re.FindAllString(out.String(), 1)
+	strs = strings.Split(strs[0], ":")
+	veth := strings.TrimSpace(strs[1])
+	return veth, nil
 }
 
 func getContainerFile(srcContainer string, srcPath string, cli *client.Client) (filePath string, fileName string, err error) {
