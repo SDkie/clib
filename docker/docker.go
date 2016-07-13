@@ -217,7 +217,10 @@ func (d Docker) GetContainerData(containerId string) (*container.ContainerData, 
 	}
 
 	containerData.VolumeMap = containerJson.Config.Volumes
-	// TODO	containerData.VirtualEthDevice
+	containerData.VirtualEthDevice, err = getVethNameFromDockerPid(containerJson.State.Pid, containerJson.ID)
+	if err != nil {
+		logger.Err(err)
+	}
 	containerData.CreatedTime, err = time.Parse(time.RFC3339, containerJson.Created)
 	if err != nil {
 		logger.Err("Error while Parsing time - %s", containerJson.Created)

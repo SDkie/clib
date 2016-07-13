@@ -2,6 +2,7 @@ package docker
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"strings"
 	"testing"
@@ -94,28 +95,26 @@ func TestMain(m *testing.M) {
 	}
 
 	responseDecoder := json.NewDecoder(responseReader)
-	data := struct {
+	progress := struct {
 		Status string `json:"status"`
 	}{}
 
 	for err == nil {
-		err = responseDecoder.Decode(&data)
-		logger.Debug(data)
+		err = responseDecoder.Decode(&progress)
+		log.Println(progress)
 
-		if strings.Contains(data.Status, "Digest") {
+		if strings.Contains(progress.Status, "Digest") {
 			break
 		}
 	}
 
-	if !strings.Contains(data.Status, "Digest") {
+	if !strings.Contains(progress.Status, "Digest") {
 		os.Exit(1)
-	} else {
-		imageId = data.Status[strings.LastIndex(data.Status, ":")+1:]
-		logger.Debug(imageId)
 	}
+	imageId = "ubuntu:latest"
 
 	config := container.Config{
-		Image: "ubuntu:latest",
+		Image: imageId,
 		Cmd:   []string{"/bin/bash"},
 	}
 
