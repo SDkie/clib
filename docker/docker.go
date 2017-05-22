@@ -16,11 +16,11 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/SDkie/clib"
+	"github.com/SDkie/clib/logger"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/engine-api/client"
 	"github.com/docker/engine-api/types"
-	"github.com/kdsukhani/container"
-	"github.com/kdsukhani/container/logger"
 	"github.com/satori/go.uuid"
 )
 
@@ -155,7 +155,7 @@ func (d Docker) GetContainerForInterface(virtualEthDevice string) (string, error
 	return "", errors.New("Not Found")
 }
 
-func (d Docker) GetContainerData(containerId string) (*container.ContainerData, error) {
+func (d Docker) GetContainerData(containerId string) (*clib.ContainerData, error) {
 	ctx := context.Background()
 	cli, err := d.getClient()
 	if err != nil {
@@ -168,7 +168,7 @@ func (d Docker) GetContainerData(containerId string) (*container.ContainerData, 
 		return nil, ErrOnContainerInspect
 	}
 
-	containerData := new(container.ContainerData)
+	containerData := new(clib.ContainerData)
 	containerData.ContainerType = "DOCKER"
 	containerData.Name = containerJson.Name
 	containerData.ContainerId = containerJson.ID
@@ -194,26 +194,26 @@ func (d Docker) GetContainerData(containerId string) (*container.ContainerData, 
 
 	// NetworkType
 	if containerJson.HostConfig.NetworkMode.IsBridge() {
-		containerData.Network = container.NETWORK_TYPE_BRIDGE
+		containerData.Network = clib.NETWORK_TYPE_BRIDGE
 	} else if containerJson.HostConfig.NetworkMode.IsHost() {
-		containerData.Network = container.NETWORK_TYPE_HOST
+		containerData.Network = clib.NETWORK_TYPE_HOST
 	} else if containerJson.HostConfig.NetworkMode.IsContainer() {
-		containerData.Network = container.NETWORK_TYPE_CONTAINER
+		containerData.Network = clib.NETWORK_TYPE_CONTAINER
 	} else if containerJson.HostConfig.NetworkMode.IsNone() {
-		containerData.Network = container.NETWORK_TYPE_NONE
+		containerData.Network = clib.NETWORK_TYPE_NONE
 	} else if containerJson.HostConfig.NetworkMode.IsDefault() {
-		containerData.Network = container.NETWORK_TYPE_DEFAULT
+		containerData.Network = clib.NETWORK_TYPE_DEFAULT
 	} else if containerJson.HostConfig.NetworkMode.IsUserDefined() {
-		containerData.Network = container.NETWORK_TYPE_USER_DEFINED
+		containerData.Network = clib.NETWORK_TYPE_USER_DEFINED
 	}
 
 	// ProcessSpaceType
 	if containerJson.HostConfig.PidMode.IsPrivate() {
-		containerData.Process = container.PID_PRIVATE
+		containerData.Process = clib.PID_PRIVATE
 	} else if containerJson.HostConfig.PidMode.IsHost() {
-		containerData.Process = container.PID_HOST
+		containerData.Process = clib.PID_HOST
 	} else if containerJson.HostConfig.PidMode.IsContainer() {
-		containerData.Process = container.PID_CONTAINER
+		containerData.Process = clib.PID_CONTAINER
 	}
 
 	containerData.VolumeMap = containerJson.Config.Volumes
@@ -322,7 +322,7 @@ func (d Docker) GetUsernameForUid(containerId string, uid int) (string, error) {
 	return username, nil
 }
 
-func (d Docker) GetImageData(id string) (*container.ImageData, error) {
+func (d Docker) GetImageData(id string) (*clib.ImageData, error) {
 	ctx := context.Background()
 	cli, err := d.getClient()
 	if err != nil {
@@ -335,7 +335,7 @@ func (d Docker) GetImageData(id string) (*container.ImageData, error) {
 		return nil, ErrGettingImageList
 	}
 
-	imageData := new(container.ImageData)
+	imageData := new(clib.ImageData)
 
 	for _, image := range images {
 		if image.ID == id {
